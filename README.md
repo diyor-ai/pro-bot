@@ -30,9 +30,12 @@ pro-bot/
 │   ├── en.json
 │   ├── ru.json
 │   └── uz.json
-├── credentials.json    # Google Service Account credentials
-└── requirements.txt    # Python dependencies
+├── Dockerfile          # Docker configuration
+├── requirements.txt    # Python dependencies
+└── Procfile            # Heroku deployment
 ```
+
+> **Note**: `credentials.json` and `.env` are excluded from the repository via `.gitignore` for security.
 
 ## Prerequisites
 
@@ -40,6 +43,9 @@ pro-bot/
 - Telegram Bot Token from [@BotFather](https://t.me/BotFather)
 - Google Cloud Service Account with Sheets API access
 - Google Spreadsheet with product and order data
+
+### Security Note
+Never commit `credentials.json` or `.env` files to version control. Both are included in `.gitignore` for your protection.
 
 ## Installation
 
@@ -131,14 +137,19 @@ gunicorn bot:main
 ```
 
 ### Docker
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY . .
-CMD ["python", "bot.py"]
+```bash
+# Build and run
+docker build -t pro-bot .
+docker run -d --env-file .env pro-bot
 ```
+
+See [Dockerfile](Dockerfile) for the complete configuration.
+
+## Screenshots
+
+![Bot Interface](docs/bot-screenshot.png)
+
+*Coming soon - screenshots of the bot interface in action*
 
 ## License
 
