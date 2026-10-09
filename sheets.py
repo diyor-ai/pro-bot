@@ -1,3 +1,4 @@
+import functools
 import json
 import logging
 import os
@@ -13,22 +14,28 @@ from utils import is_available, next_order_id, parse_price
 logger = logging.getLogger(__name__)
 _cache = {}
 _spreadsheet = None
-_lock = threading.Lock()
+
+# Every gspread call runs in a worker thread (asyncio.to_thread) and they all share one
+# client, whose HTTP session and OAuth token refresh are not thread-safe. Sheets calls are
+# rate-limited anyway, so we take this lock around them and run them one at a time.
+# It is NOT reentrant: only the public functions below take it, helpers must not.
+_sheets_lock = threading.Lock()
 
 
 def _open_spreadsheet():
-    """Reuse one authorized spreadsheet handle instead of re-authing on every call."""
+    """Reuse one authorized spreadsheet handle instead of re-authing on every call.
+
+    Callers must hold _sheets_lock.
+    """
     global _spreadsheet
-    with _lock:
-        if _spreadsheet is None:
-            _spreadsheet = gspread.authorize(get_credentials()).open(SHEET_NAME)
-        return _spreadsheet
+    if _spreadsheet is None:
+        _spreadsheet = gspread.authorize(get_credentials()).open(SHEET_NAME)
+    return _spreadsheet
 
 
 def _reset_spreadsheet():
     global _spreadsheet
-    with _lock:
-        _spreadsheet = None
+    _spreadsheet = None
 
 def get_credentials():
     try:
@@ -43,14 +50,34 @@ def get_credentials():
         CREDENTIALS_FILE, scopes=SCOPES
     )
 
+def _serialized(func):
+    """Run a public Sheets function holding _sheets_lock."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with _sheets_lock:
+            return func(*args, **kwargs)
+    return wrapper
+
+def _cached_products(cache_key):
+    entry = _cache.get(cache_key)
+    if entry and (time.time() - entry["last_updated"]) < CACHE_TTL:
+        return entry["data"]
+    return None
+
 def get_products(category=None):
-    now = time.time()
     cache_key = "products_all" if category is None else f"products_{category}"
+    cached = _cached_products(cache_key)
+    if cached is not None:  # cache hits never touch gspread, so they do not wait for the lock
+        return cached
+    with _sheets_lock:
+        # another thread may have refreshed the cache while we waited for the lock
+        cached = _cached_products(cache_key)
+        if cached is not None:
+            return cached
+        return _load_products(category, cache_key)
 
-    if cache_key in _cache:
-        if (now - _cache[cache_key]["last_updated"]) < CACHE_TTL:
-            return _cache[cache_key]["data"]
-
+def _load_products(category, cache_key):
+    now = time.time()
     try:
         if "products_all" in _cache and (now - _cache["products_all"]["last_updated"]) < CACHE_TTL:
             available = _cache["products_all"]["data"]
@@ -85,6 +112,7 @@ def get_product_by_id(product_id):
             return p
     return None
 
+@_serialized
 def save_order(order: dict):
     """Buyurtmani saqlaydi va uning ID sini qaytaradi (xatoda None)."""
     try:
@@ -155,6 +183,7 @@ def update_user(spreadsheet, order):
     except Exception:
         logger.exception("update_user failed for order of user %s", order.get("user_id"))
 
+@_serialized
 def get_orders(status=None, limit=20):
     try:
         spreadsheet = _open_spreadsheet()
@@ -170,6 +199,7 @@ def get_orders(status=None, limit=20):
         logger.exception("get_orders failed")
         return []
 
+@_serialized
 def update_order_status(order_id, new_status) -> bool:
     try:
         spreadsheet = _open_spreadsheet()
@@ -186,6 +216,7 @@ def update_order_status(order_id, new_status) -> bool:
         logger.exception("update_order_status failed for order %s", order_id)
         return False
 
+@_serialized
 def get_stats() -> dict:
     try:
         import datetime
@@ -205,6 +236,7 @@ def get_stats() -> dict:
         logger.exception("get_stats failed")
         return {}
 
+@_serialized
 def get_user_ids():
     """Unique Telegram User_IDs from the Users sheet (for broadcast)."""
     try:
