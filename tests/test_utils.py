@@ -1,8 +1,14 @@
 import pytest
 
 from utils import (
-    esc, format_price, fuzzy_search, is_available, next_order_id,
-    parse_price, sanitize, validate_phone,
+    esc,
+    format_price,
+    fuzzy_search,
+    is_available,
+    next_order_id,
+    parse_price,
+    sanitize,
+    validate_phone,
 )
 
 

@@ -2,24 +2,47 @@ import asyncio
 import logging
 import os
 from datetime import datetime
-from telegram import Update, ReplyKeyboardRemove
+
+from telegram import ReplyKeyboardRemove, Update
 from telegram.error import BadRequest, Forbidden, RetryAfter, TelegramError
 from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler, MessageHandler, PicklePersistence,
-    PersistenceInput, filters, ContextTypes,
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    PersistenceInput,
+    PicklePersistence,
+    filters,
 )
-from config import TELEGRAM_TOKEN, SHOP_NAME, ADMIN_CHAT_ID, ADMIN_IDS, BROADCAST_DELAY, PERSISTENCE_FILE
-from sheets import (
-    get_products, get_categories, get_product_by_id, save_order, get_orders,
-    get_stats, update_order_status, get_user_ids,
-)
+
+from config import ADMIN_CHAT_ID, ADMIN_IDS, BROADCAST_DELAY, PERSISTENCE_FILE, SHOP_NAME, TELEGRAM_TOKEN
+from i18n import ADMIN_LANG, translate
+from i18n import tr as t
 from keyboards import (
-    lang_keyboard, main_menu_keyboard, back_keyboard, admin_keyboard,
-    category_keyboard, products_keyboard, product_action_keyboard, confirm_keyboard,
-    phone_keyboard, order_status_keyboard, broadcast_confirm_keyboard,
+    admin_keyboard,
+    back_keyboard,
+    broadcast_confirm_keyboard,
+    category_keyboard,
+    confirm_keyboard,
+    lang_keyboard,
+    main_menu_keyboard,
+    order_status_keyboard,
+    phone_keyboard,
+    product_action_keyboard,
+    products_keyboard,
 )
-from i18n import ADMIN_LANG, translate, tr as t
-from utils import format_price, parse_price, esc, sanitize, validate_phone, fuzzy_search, product_emoji
+from sheets import (
+    get_categories,
+    get_orders,
+    get_product_by_id,
+    get_products,
+    get_stats,
+    get_user_ids,
+    save_order,
+    update_order_status,
+)
+from utils import esc, format_price, fuzzy_search, parse_price, product_emoji, sanitize, validate_phone
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +211,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_edit(query, t(context, "product_not_found"), reply_markup=back_keyboard(context))
             return
 
-        cap = f"{product_emoji(p.get('Kategoriya'))} <b>{esc(p['Nomi'])}</b>\n\n\U0001f4b0 {format_price(p['Narxi'], t(context, 'currency'))}\n\U0001f4dd {esc(p.get('Tavsif', '-'))}\n\n{t(context, 'buy_confirm')}"
+        cap = (
+            f"{product_emoji(p.get('Kategoriya'))} <b>{esc(p['Nomi'])}</b>\n\n"
+            f"\U0001f4b0 {format_price(p['Narxi'], t(context, 'currency'))}\n"
+            f"\U0001f4dd {esc(p.get('Tavsif', '-'))}\n\n"
+            f"{t(context, 'buy_confirm')}"
+        )
 
         try:
             rasm = p.get("Rasm_URL", "")

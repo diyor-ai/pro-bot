@@ -1,6 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from i18n import translate, tr
+from i18n import tr, translate
 from utils import parse_price
 
 

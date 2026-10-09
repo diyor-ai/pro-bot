@@ -2,7 +2,8 @@ import json
 import logging
 import os
 
-from config import ADMIN_LANG as _ADMIN_LANG_RAW, LOCALES_DIR
+from config import ADMIN_LANG as _ADMIN_LANG_RAW
+from config import LOCALES_DIR
 
 logger = logging.getLogger(__name__)
 DEFAULT_LANG = "uz"
