@@ -1,5 +1,6 @@
 import logging
 import time
+import threading
 import json
 import os
 import gspread
@@ -12,6 +13,23 @@ from config import (
 
 logger = logging.getLogger(__name__)
 _cache = {}
+_spreadsheet = None
+_lock = threading.Lock()
+
+
+def _open_spreadsheet():
+    """Reuse one authorized spreadsheet handle instead of re-authing on every call."""
+    global _spreadsheet
+    with _lock:
+        if _spreadsheet is None:
+            _spreadsheet = gspread.authorize(get_credentials()).open(SHEET_NAME)
+        return _spreadsheet
+
+
+def _reset_spreadsheet():
+    global _spreadsheet
+    with _lock:
+        _spreadsheet = None
 
 def get_credentials():
     try:
@@ -35,22 +53,23 @@ def get_products(category=None):
             return _cache[cache_key]["data"]
 
     try:
-        creds = get_credentials()
-        client = gspread.authorize(creds)
-        sheet = client.open(SHEET_NAME).sheet1
-        all_products = sheet.get_all_records()
-
-        available = [p for p in all_products if is_available(p.get("Mavjud"))]
+        if "products_all" in _cache and (now - _cache["products_all"]["last_updated"]) < CACHE_TTL:
+            available = _cache["products_all"]["data"]
+        else:
+            all_products = _open_spreadsheet().sheet1.get_all_records()
+            available = [p for p in all_products if is_available(p.get("Mavjud"))]
+            _cache["products_all"] = {"data": available, "last_updated": now}
 
         if category:
             available = [p for p in available
                         if str(p.get("Kategoriya", "")).lower() == category.lower()]
-
-        _cache[cache_key] = {"data": available, "last_updated": now}
+            _cache[cache_key] = {"data": available, "last_updated": now}
         return available
     except Exception:
+        _reset_spreadsheet()
         logger.exception("Sheets error in get_products")
-        return []
+        stale = _cache.get("products_all")
+        return stale["data"] if stale and not category else []
 
 def get_categories():
     products = get_products()
@@ -70,9 +89,7 @@ def get_product_by_id(product_id):
 def save_order(order: dict):
     """Buyurtmani saqlaydi va uning ID sini qaytaradi (xatoda None)."""
     try:
-        creds = get_credentials()
-        client = gspread.authorize(creds)
-        spreadsheet = client.open(SHEET_NAME)
+        spreadsheet = _open_spreadsheet()
 
         try:
             ws = spreadsheet.worksheet(ORDERS_SHEET)
@@ -141,9 +158,7 @@ def update_user(spreadsheet, order):
 
 def get_orders(status=None, limit=20):
     try:
-        creds = get_credentials()
-        client = gspread.authorize(creds)
-        spreadsheet = client.open(SHEET_NAME)
+        spreadsheet = _open_spreadsheet()
         ws = spreadsheet.worksheet(ORDERS_SHEET)
 
         records = ws.get_all_records()
@@ -158,9 +173,7 @@ def get_orders(status=None, limit=20):
 
 def update_order_status(order_id, new_status) -> bool:
     try:
-        creds = get_credentials()
-        client = gspread.authorize(creds)
-        spreadsheet = client.open(SHEET_NAME)
+        spreadsheet = _open_spreadsheet()
         ws = spreadsheet.worksheet(ORDERS_SHEET)
 
         records = ws.get_all_values()
@@ -177,9 +190,7 @@ def update_order_status(order_id, new_status) -> bool:
 def get_stats() -> dict:
     try:
         import datetime
-        creds = get_credentials()
-        client = gspread.authorize(creds)
-        spreadsheet = client.open(SHEET_NAME)
+        spreadsheet = _open_spreadsheet()
         ws = spreadsheet.worksheet(ORDERS_SHEET)
 
         records = ws.get_all_records()
@@ -198,9 +209,7 @@ def get_stats() -> dict:
 def get_user_ids():
     """Unique Telegram User_IDs from the Users sheet (for broadcast)."""
     try:
-        creds = get_credentials()
-        client = gspread.authorize(creds)
-        ws = client.open(SHEET_NAME).worksheet(USERS_SHEET)
+        ws = _open_spreadsheet().worksheet(USERS_SHEET)
         ids = []
         for v in ws.col_values(1)[1:]:
             v = str(v).strip()

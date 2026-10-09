@@ -114,9 +114,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Show products (categories)
     if query.data == "show_products":
-        categories = get_categories()
+        categories = await asyncio.to_thread(get_categories)
         if not categories or len(categories) == 0:
-            products = get_products()
+            products = await asyncio.to_thread(get_products)
             if not products:
                 await safe_edit(query, "❌ Mahsulotlar topilmadi", reply_markup=back_keyboard(context))
                 return
@@ -136,7 +136,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Category filter
     if query.data.startswith("cat_"):
         category = query.data[4:]
-        products = get_products(category)
+        products = await asyncio.to_thread(get_products, category)
         if not products:
             await safe_edit(query, t(context, "not_found"), reply_markup=back_keyboard(context))
             return
@@ -150,7 +150,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Product detail
     if query.data.startswith("product_"):
         pid = query.data.split("_", 1)[1]
-        p = get_product_by_id(pid)
+        p = await asyncio.to_thread(get_product_by_id, pid)
         if not p:
             await safe_edit(query, "❌ Mahsulot topilmadi", reply_markup=back_keyboard(context))
             return
@@ -183,7 +183,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Buy product
     if query.data.startswith("buy_"):
         pid = query.data.split("_", 1)[1]
-        p = get_product_by_id(pid)
+        p = await asyncio.to_thread(get_product_by_id, pid)
         if not p:
             return
         context.user_data['order'] = {
@@ -201,7 +201,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         order = context.user_data.get('pending_order')
         if not order:
             return
-        order_id = save_order(order)
+        order_id = await asyncio.to_thread(save_order, order)
         if not order_id:
             await query.answer(t(context, "order_error"), show_alert=True)
             return
@@ -235,7 +235,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(query.from_user.id):
             await query.answer("❌ Access denied")
             return
-        orders = get_orders(status="Yangi", limit=10)
+        orders = await asyncio.to_thread(get_orders, status="Yangi", limit=10)
         if not orders:
             await safe_edit(query, t(context, "no_orders"), reply_markup=back_keyboard(context))
             return
@@ -253,7 +253,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(query.from_user.id):
             await query.answer("❌ Access denied")
             return
-        stats = get_stats()
+        stats = await asyncio.to_thread(get_stats)
         txt = f"\U0001f4ca Statistika:\n\nJami: {stats.get('total', 0)}\nBugun: {stats.get('today', 0)}\nYangi: {stats.get('new', 0)}\nDaromad: {stats.get('revenue', 0):,} so'm".replace(",", " ")
         await safe_edit(query, txt, reply_markup=back_keyboard(context))
         return
@@ -280,7 +280,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not text:
             await query.answer("Xabar topilmadi", show_alert=True)
             return
-        user_ids = get_user_ids()
+        user_ids = await asyncio.to_thread(get_user_ids)
         if user_ids is None:
             await safe_edit(query, "❌ Users varag'ini o'qib bo'lmadi", reply_markup=back_keyboard(context))
             return
@@ -302,7 +302,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(parts) >= 3:
             order_id, st = parts[1], parts[2]
             status_map = {"processing": "Jarayonda", "delivering": "Yo'lda", "delivered": "Yetkazildi"}
-            if update_order_status(order_id, status_map.get(st, st)):
+            if await asyncio.to_thread(update_order_status, order_id, status_map.get(st, st)):
                 await query.answer(t(context, "order_status_updated"))
             else:
                 await query.answer(t(context, "order_error"), show_alert=True)
@@ -332,7 +332,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Search
     if step == 'searching':
-        products = get_products()
+        products = await asyncio.to_thread(get_products)
         found = fuzzy_search(sanitize(text), products)
         if found:
             await update.message.reply_text(
@@ -406,7 +406,16 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
 # ============== MAIN ==============
 def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(TELEGRAM_TOKEN)
+        .concurrent_updates(True)
+        .connect_timeout(15)
+        .read_timeout(20)
+        .write_timeout(20)
+        .pool_timeout(15)
+        .build()
+    )
 
     logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s", level=logging.INFO)
     app.add_error_handler(error_handler)
