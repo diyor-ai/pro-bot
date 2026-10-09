@@ -45,6 +45,32 @@
 - [ ] Block the bot from a test account: it counts as failed, no crash
 
 ## Restart / misc
-- [ ] Restart the bot mid-order: next message restarts with `/start` language selection (known limitation)
 - [ ] Edit a price in the sheet: the new price shows within `CACHE_TTL` seconds
 - [ ] Check logs: errors appear with tracebacks (logging works), no silent failures
+- [ ] Check logs: no line contains the bot token (no `httpx` / `api.telegram.org/bot...` request lines)
+
+## /start reset
+- [ ] Start an order and stop after entering your name, then send `/start`: the language menu appears; pick a language and the old order is gone (pressing "Yes" on a product asks for the name again, nothing from the old order is reused)
+- [ ] Press Search, then `/start`, then type a word: the bot shows the language menu instead of searching
+- [ ] As admin: Broadcast → type a message (preview shown) → `/start` → press Send on the old preview: nothing is sent ("message not found")
+- [ ] Type random text with no active step: the language menu appears and your chosen language is NOT reset
+
+## Restart persistence
+- [ ] Choose a language, start an order, enter your name, wait about 15 seconds (state is flushed every 10 s), then restart the bot
+- [ ] Send the phone number: the bot continues with the address question in your language (no `/start` needed)
+- [ ] Finish and confirm: the order is saved normally
+- [ ] After restart, `/start` is still possible at any time and resets the saved state
+- [ ] `data/bot_data.pickle` exists, is not tracked by git (`git status` clean) and deleting it resets everyone to the language menu
+
+## Admin language (`ADMIN_LANG`)
+- [ ] `ADMIN_LANG=en` in `.env`, restart, place an order: the admin message reads "NEW ORDER!" with price in `UZS`, buttons "Processing / On the way / Delivered"
+- [ ] `/admin` shows "Admin panel:" with "Orders / Statistics / Broadcast"; Statistics, Broadcast prompt/preview/result are English too
+- [ ] Repeat with `ru` and `uz`; an invalid value (`ADMIN_LANG=de`) logs a warning and falls back to `uz`
+- [ ] Press each status button: the sheet `Status` column is always `Jarayonda`, `Yo'lda` or `Yetkazildi` whatever `ADMIN_LANG` is, and "Orders" still lists `Yangi` orders
+- [ ] Customer screens stay in the customer's own language, independent of `ADMIN_LANG`
+
+## Category buttons and product emoji
+- [ ] Each category button opens exactly that category's products (add a category with a very long name, 70+ characters: still works)
+- [ ] After the sheet changes (category added/removed) press an old category button: no crash
+- [ ] `Krossovka` products show 👟, `Aksessuar` products 👜, any other category 🛍 (product card, order confirmation, admin notification, admin order list)
+- [ ] `CATEGORY_EMOJI=Kiyim=👕` in `.env` + restart: products of category `Kiyim` show 👕
