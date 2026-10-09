@@ -23,9 +23,15 @@ def load_locales():
 LOCALES = load_locales()
 
 
-def tr(context, key, default=None):
-    lang = context.user_data.get("lang", DEFAULT_LANG)
-    value = LOCALES.get(lang, LOCALES.get(DEFAULT_LANG, {})).get(key)
+def translate(lang, key, **kwargs):
+    """Text for `key` in `lang` (falls back to the default language, then to the key itself)."""
+    value = LOCALES.get(lang, {}).get(key)
     if value is None:
-        return default if default is not None else key
-    return value
+        value = LOCALES.get(DEFAULT_LANG, {}).get(key)
+    if value is None:
+        return key
+    return value.format(**kwargs) if kwargs else value
+
+
+def tr(context, key, **kwargs):
+    return translate(context.user_data.get("lang", DEFAULT_LANG), key, **kwargs)

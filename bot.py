@@ -18,10 +18,16 @@ from keyboards import (
     category_keyboard, products_keyboard, product_action_keyboard, confirm_keyboard,
     phone_keyboard, order_status_keyboard, broadcast_confirm_keyboard,
 )
-from i18n import tr as t
+from i18n import DEFAULT_LANG, translate, tr as t
 from utils import format_price, parse_price, esc, sanitize, validate_phone, fuzzy_search, product_emoji
 
 logger = logging.getLogger(__name__)
+
+ADMIN_LANG = DEFAULT_LANG
+
+def ta(key, **kwargs):
+    """Text for the admin (admin screens and notifications use ADMIN_LANG)."""
+    return translate(ADMIN_LANG, key, **kwargs)
 
 # ============== HELPERS ==============
 async def safe_edit(query, text, **kwargs):
@@ -64,23 +70,23 @@ def is_admin(user_id):
 
 async def notify_admin(context, order):
     try:
-        text = (
-            f"\U0001f195 YANGI BUYURTMA!\n"
-            f"\U0001f3ea {SHOP_NAME}\n"
-            f"\U0001f30d {order.get('til', 'uz').upper()}\n"
-            f"{'=' * 30}\n"
-            f"\U0001f194 #{order['id']}\n"
-            f"{product_emoji(order.get('kategoriya'))} {order['mahsulot']}\n"
-            f"\U0001f4b0 {format_price(order['narx'])}\n"
-            f"\U0001f464 {order['ism']}\n"
-            f"\U0001f4f1 {order['telefon']}\n"
-            f"\U0001f4cd {order['manzil']}\n"
-            f"\U0001f55c {order['sana']}"
+        text = ta(
+            "admin_new_order",
+            shop=SHOP_NAME,
+            lang=order.get("til", "uz").upper(),
+            id=order["id"],
+            emoji=product_emoji(order.get("kategoriya")),
+            product=order["mahsulot"],
+            price=format_price(order["narx"], ta("currency")),
+            name=order["ism"],
+            phone=order["telefon"],
+            address=order["manzil"],
+            date=order["sana"],
         )
         await context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=text,
-            reply_markup=order_status_keyboard(order["id"])
+            reply_markup=order_status_keyboard(order["id"], ADMIN_LANG)
         )
     except Exception:
         logger.exception("Admin notify failed")
@@ -123,7 +129,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("lang_"):
         lang = query.data.replace("lang_", "")
         context.user_data["lang"] = lang
-        await safe_edit(query, 
+        await safe_edit(query,
             f"\U0001f3ea <b>{esc(SHOP_NAME)}</b>\n\n{t(context, 'welcome')}",
             reply_markup=main_menu_keyboard(context),
             parse_mode='HTML'
@@ -132,7 +138,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Back
     if query.data == "back":
-        await safe_edit(query, 
+        await safe_edit(query,
             f"\U0001f3ea <b>{esc(SHOP_NAME)}</b>",
             reply_markup=main_menu_keyboard(context),
             parse_mode='HTML'
@@ -145,16 +151,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not categories or len(categories) == 0:
             products = await asyncio.to_thread(get_products)
             if not products:
-                await safe_edit(query, "❌ Mahsulotlar topilmadi", reply_markup=back_keyboard(context))
+                await safe_edit(query, t(context, "no_products"), reply_markup=back_keyboard(context))
                 return
-            await safe_edit(query, 
+            await safe_edit(query,
                 f"<b>{t(context, 'choose_product')}</b>",
                 reply_markup=products_keyboard(context, products),
                 parse_mode='HTML'
             )
             return
         context.user_data["categories"] = categories
-        await safe_edit(query, 
+        await safe_edit(query,
             f"<b>{t(context, 'choose_category')}</b>",
             reply_markup=category_keyboard(context, categories),
             parse_mode='HTML'
@@ -169,7 +175,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not products:
             await safe_edit(query, t(context, "not_found"), reply_markup=back_keyboard(context))
             return
-        await safe_edit(query, 
+        await safe_edit(query,
             f"<b>{t(context, 'choose_product')}</b>",
             reply_markup=products_keyboard(context, products),
             parse_mode='HTML'
@@ -181,10 +187,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pid = query.data.split("_", 1)[1]
         p = await asyncio.to_thread(get_product_by_id, pid)
         if not p:
-            await safe_edit(query, "❌ Mahsulot topilmadi", reply_markup=back_keyboard(context))
+            await safe_edit(query, t(context, "product_not_found"), reply_markup=back_keyboard(context))
             return
 
-        cap = f"{product_emoji(p.get('Kategoriya'))} <b>{esc(p['Nomi'])}</b>\n\n\U0001f4b0 {format_price(p['Narxi'])}\n\U0001f4dd {esc(p.get('Tavsif', '-'))}\n\n{t(context, 'buy_confirm')}"
+        cap = f"{product_emoji(p.get('Kategoriya'))} <b>{esc(p['Nomi'])}</b>\n\n\U0001f4b0 {format_price(p['Narxi'], t(context, 'currency'))}\n\U0001f4dd {esc(p.get('Tavsif', '-'))}\n\n{t(context, 'buy_confirm')}"
 
         try:
             rasm = p.get("Rasm_URL", "")
@@ -236,7 +242,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         order['id'] = order_id
         await notify_admin(context, order)
-        await safe_edit(query, 
+        await safe_edit(query,
             f"{t(context, 'order_done')}\n\n\U0001f64f {t(context, 'order_contact')}",
             reply_markup=main_menu_keyboard(context)
         )
@@ -262,70 +268,85 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Admin
     if query.data == "admin_orders":
         if not is_admin(query.from_user.id):
-            await query.answer("❌ Access denied")
+            await query.answer(t(context, "access_denied"), show_alert=True)
             return
         orders = await asyncio.to_thread(get_orders, status="Yangi", limit=10)
         if not orders:
-            await safe_edit(query, t(context, "no_orders"), reply_markup=back_keyboard(context))
+            await safe_edit(query, ta("no_orders"), reply_markup=back_keyboard(context, ADMIN_LANG))
             return
         for o in orders:
-            txt = f"{product_emoji(o.get('Kategoriya'))} {o.get('Mahsulot', '-')}\n\U0001f4b0 {format_price(o.get('Narx', 0))}\n\U0001f464 {o.get('Ism', '-')}\n\U0001f4f1 {o.get('Telefon', '-')}\n\U0001f4cd {o.get('Manzil', '-')}"
+            txt = ta(
+                "admin_order_line",
+                emoji=product_emoji(o.get('Kategoriya')),
+                product=o.get('Mahsulot', '-'),
+                price=format_price(o.get('Narx', 0), ta("currency")),
+                name=o.get('Ism', '-'),
+                phone=o.get('Telefon', '-'),
+                address=o.get('Manzil', '-'),
+            )
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=txt,
-                reply_markup=order_status_keyboard(o.get('ID', 0))
+                reply_markup=order_status_keyboard(o.get('ID', 0), ADMIN_LANG)
             )
         await query.delete_message()
         return
 
     if query.data == "admin_stats":
         if not is_admin(query.from_user.id):
-            await query.answer("❌ Access denied")
+            await query.answer(t(context, "access_denied"), show_alert=True)
             return
         stats = await asyncio.to_thread(get_stats)
-        txt = f"\U0001f4ca Statistika:\n\nJami: {stats.get('total', 0)}\nBugun: {stats.get('today', 0)}\nYangi: {stats.get('new', 0)}\nDaromad: {stats.get('revenue', 0):,} so'm".replace(",", " ")
-        await safe_edit(query, txt, reply_markup=back_keyboard(context))
+        revenue = f"{stats.get('revenue', 0):,}".replace(",", " ")
+        txt = ta(
+            "admin_stats_text",
+            total=stats.get('total', 0),
+            today=stats.get('today', 0),
+            new=stats.get('new', 0),
+            revenue=f"{revenue} {ta('currency')}",
+        )
+        await safe_edit(query, txt, reply_markup=back_keyboard(context, ADMIN_LANG))
         return
 
     if query.data == "admin_broadcast":
         if not is_admin(query.from_user.id):
-            await query.answer("❌ Access denied")
+            await query.answer(t(context, "access_denied"), show_alert=True)
             return
         context.user_data['step'] = 'broadcast'
-        await safe_edit(query, "Xabar matnini yozing:", reply_markup=back_keyboard(context))
+        await safe_edit(query, ta("admin_broadcast_prompt"), reply_markup=back_keyboard(context, ADMIN_LANG))
         return
 
     if query.data == "broadcast_cancel":
         context.user_data['step'] = None
         context.user_data.pop('broadcast_text', None)
-        await safe_edit(query, "❌ Broadcast bekor qilindi", reply_markup=back_keyboard(context))
+        await safe_edit(query, ta("admin_broadcast_cancelled"), reply_markup=back_keyboard(context, ADMIN_LANG))
         return
 
     if query.data == "broadcast_send":
         if not is_admin(query.from_user.id):
-            await query.answer("❌ Access denied", show_alert=True)
+            await query.answer(t(context, "access_denied"), show_alert=True)
             return
         text = context.user_data.pop('broadcast_text', None)
         if not text:
-            await query.answer("Xabar topilmadi", show_alert=True)
+            await query.answer(ta("admin_broadcast_missing"), show_alert=True)
             return
         user_ids = await asyncio.to_thread(get_user_ids)
         if user_ids is None:
-            await safe_edit(query, "❌ Users varag'ini o'qib bo'lmadi", reply_markup=back_keyboard(context))
+            await safe_edit(query, ta("admin_users_error"), reply_markup=back_keyboard(context, ADMIN_LANG))
             return
-        await safe_edit(query, f"⏳ {len(user_ids)} ta foydalanuvchiga yuborilmoqda...")
+        await safe_edit(query, ta("admin_broadcast_sending", count=len(user_ids)))
         sent, failed = await send_broadcast(context.bot, user_ids, text)
         await context.bot.send_message(
             chat_id=query.message.chat_id,
-            text=f"\U0001f4e2 Broadcast tugadi\n✅ Yuborildi: {sent}\n❌ Xato: {failed}",
-            reply_markup=back_keyboard(context),
+            text=ta("admin_broadcast_done", sent=sent, failed=failed),
+            reply_markup=back_keyboard(context, ADMIN_LANG),
         )
         return
 
     # Status update
     if query.data.startswith("status_"):
         if not is_admin(query.from_user.id):
-            await query.answer("❌ Access denied", show_alert=True)
+            await query.answer(t(context, "access_denied"), show_alert=True)
             return
         parts = query.data.split("_")
         if len(parts) >= 3:
@@ -381,8 +402,8 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['broadcast_text'] = text
         context.user_data['step'] = None
         await update.message.reply_text(
-            f"\U0001f4e2 Quyidagi xabar barcha foydalanuvchilarga yuboriladi:\n\n{text}",
-            reply_markup=broadcast_confirm_keyboard(),
+            ta("admin_broadcast_preview", text=text),
+            reply_markup=broadcast_confirm_keyboard(ADMIN_LANG),
         )
         return
 
@@ -415,7 +436,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"\U0001f4cb <b>{t(context, 'confirm_order')}</b>\n\n"
             f"{product_emoji(order.get('kategoriya'))} {esc(order['mahsulot'])}\n"
-            f"\U0001f4b0 {format_price(order['narx'])}\n"
+            f"\U0001f4b0 {format_price(order['narx'], t(context, 'currency'))}\n"
             f"\U0001f464 {esc(order['ism'])}\n"
             f"\U0001f4f1 {esc(order['telefon'])}\n"
             f"\U0001f4cd {esc(order['manzil'])}",
@@ -426,9 +447,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============== ADMIN COMMAND ==============
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("❌ Access denied")
+        await update.message.reply_text(t(context, "access_denied"))
         return
-    await update.message.reply_text("\U0001f4cb Admin panel:", reply_markup=admin_keyboard())
+    await update.message.reply_text(ta("admin_panel"), reply_markup=admin_keyboard(ADMIN_LANG))
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error("Unhandled exception", exc_info=context.error)

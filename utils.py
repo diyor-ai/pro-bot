@@ -22,8 +22,8 @@ def parse_price(value):
         return 0
 
 
-def format_price(price):
-    return f"{parse_price(price):,} so'm".replace(",", " ")
+def format_price(price, currency="so'm"):
+    return f"{parse_price(price):,} {currency}".replace(",", " ")
 
 
 def esc(text):

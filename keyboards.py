@@ -1,6 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from i18n import tr
+from i18n import translate, tr
 from utils import parse_price
 
 
@@ -13,32 +13,32 @@ def lang_keyboard():
 
 def main_menu_keyboard(context):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(tr(context, "all_products", "\U0001f4e6 Products"), callback_data="show_products")],
-        [InlineKeyboardButton(tr(context, "search", "\U0001f50d Search"), callback_data="search")],
+        [InlineKeyboardButton(tr(context, "all_products"), callback_data="show_products")],
+        [InlineKeyboardButton(tr(context, "search"), callback_data="search")],
     ])
 
-def back_keyboard(context):
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton(tr(context, "back", "\U0001f519 Back"), callback_data="back")
-    ]])
+def back_keyboard(context, lang=None):
+    """Back button in the user's language, or in `lang` (used for admin screens)."""
+    label = translate(lang, "back") if lang else tr(context, "back")
+    return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data="back")]])
 
-def admin_keyboard():
+def admin_keyboard(lang):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("\U0001f4cb Buyurtmalar", callback_data="admin_orders")],
-        [InlineKeyboardButton("\U0001f4ca Statistika", callback_data="admin_stats")],
-        [InlineKeyboardButton("\U0001f4e2 Broadcast", callback_data="admin_broadcast")],
+        [InlineKeyboardButton(translate(lang, "admin_orders"), callback_data="admin_orders")],
+        [InlineKeyboardButton(translate(lang, "admin_stats"), callback_data="admin_stats")],
+        [InlineKeyboardButton(translate(lang, "admin_broadcast"), callback_data="admin_broadcast")],
     ])
 
-def broadcast_confirm_keyboard():
+def broadcast_confirm_keyboard(lang):
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ Yuborish", callback_data="broadcast_send"),
-        InlineKeyboardButton("❌ Bekor qilish", callback_data="broadcast_cancel"),
+        InlineKeyboardButton(translate(lang, "admin_broadcast_send_btn"), callback_data="broadcast_send"),
+        InlineKeyboardButton(translate(lang, "cancel_btn"), callback_data="broadcast_cancel"),
     ]])
 
 def category_keyboard(context, categories):
     # callback_data is limited to 64 bytes, so send the index and map it back in the handler
     buttons = [[InlineKeyboardButton(cat, callback_data=f"cat_{i}")] for i, cat in enumerate(categories)]
-    buttons.append([InlineKeyboardButton(tr(context, "back", "\U0001f519 Back"), callback_data="back")])
+    buttons.append([InlineKeyboardButton(tr(context, "back"), callback_data="back")])
     return InlineKeyboardMarkup(buttons)
 
 def products_keyboard(context, products):
@@ -48,31 +48,32 @@ def products_keyboard(context, products):
             callback_data=f"product_{p['ID']}"
         )] for p in products
     ]
-    buttons.append([InlineKeyboardButton(tr(context, "back", "\U0001f519 Back"), callback_data="back")])
+    buttons.append([InlineKeyboardButton(tr(context, "back"), callback_data="back")])
     return InlineKeyboardMarkup(buttons)
 
 def product_action_keyboard(context, product_id):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(tr(context, "yes", "✅ Yes"), callback_data=f"buy_{product_id}"),
-         InlineKeyboardButton(tr(context, "no", "❌ No"), callback_data="back")]
+        [InlineKeyboardButton(tr(context, "yes"), callback_data=f"buy_{product_id}"),
+         InlineKeyboardButton(tr(context, "no"), callback_data="back")]
     ])
 
 def confirm_keyboard(context):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(tr(context, "confirm_btn", "✅ Confirm"), callback_data="confirm_order")],
-        [InlineKeyboardButton(tr(context, "cancel_btn", "❌ Cancel"), callback_data="cancel_order")]
+        [InlineKeyboardButton(tr(context, "confirm_btn"), callback_data="confirm_order")],
+        [InlineKeyboardButton(tr(context, "cancel_btn"), callback_data="cancel_order")]
     ])
 
-def order_status_keyboard(order_id):
+def order_status_keyboard(order_id, lang):
+    # Only the labels are translated; the callback names map to the sheet values in bot.py.
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("\U0001f525 Jarayonda", callback_data=f"status_{order_id}_processing")],
-        [InlineKeyboardButton("\U0001f6a6 Yo'lda", callback_data=f"status_{order_id}_delivering")],
-        [InlineKeyboardButton("\U0001f69a Yetkazildi", callback_data=f"status_{order_id}_delivered")]
+        [InlineKeyboardButton(translate(lang, "status_processing"), callback_data=f"status_{order_id}_processing")],
+        [InlineKeyboardButton(translate(lang, "status_delivering"), callback_data=f"status_{order_id}_delivering")],
+        [InlineKeyboardButton(translate(lang, "status_delivered"), callback_data=f"status_{order_id}_delivered")]
     ])
 
 def phone_keyboard(context):
     return ReplyKeyboardMarkup(
-        [[KeyboardButton(tr(context, "share_phone", "Share phone"), request_contact=True)]],
+        [[KeyboardButton(tr(context, "share_phone"), request_contact=True)]],
         resize_keyboard=True,
         one_time_keyboard=True
     )
