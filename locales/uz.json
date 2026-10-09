@@ -49,6 +49,6 @@
   "admin_broadcast_done": "📢 Broadcast tugadi\n✅ Yuborildi: {sent}\n❌ Xato: {failed}",
   "admin_broadcast_send_btn": "✅ Yuborish",
   "admin_stats_text": "📊 Statistika:\n\nJami: {total}\nBugun: {today}\nYangi: {new}\nDaromad: {revenue}",
-  "admin_new_order": "🆕 YANGI BUYURTMA!\n🏪 {shop}\n🌍 {lang}\n==============================\n🆔 #{id}\n{emoji} {product}\n💰 {price}\n👤 {name}\n📱 {phone}\n📍 {address}\n🕜 {date}",
+  "admin_new_order": "🆕 YANGI BUYURTMA!\n🏪 {shop}\n🌍 {customer_lang}\n==============================\n🆔 #{id}\n{emoji} {product}\n💰 {price}\n👤 {name}\n📱 {phone}\n📍 {address}\n🕜 {date}",
   "admin_order_line": "{emoji} {product}\n💰 {price}\n👤 {name}\n📱 {phone}\n📍 {address}"
 }

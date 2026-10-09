@@ -49,6 +49,6 @@
   "admin_broadcast_done": "📢 Broadcast finished\n✅ Sent: {sent}\n❌ Failed: {failed}",
   "admin_broadcast_send_btn": "✅ Send",
   "admin_stats_text": "📊 Statistics:\n\nTotal: {total}\nToday: {today}\nNew: {new}\nRevenue: {revenue}",
-  "admin_new_order": "🆕 NEW ORDER!\n🏪 {shop}\n🌍 {lang}\n==============================\n🆔 #{id}\n{emoji} {product}\n💰 {price}\n👤 {name}\n📱 {phone}\n📍 {address}\n🕜 {date}",
+  "admin_new_order": "🆕 NEW ORDER!\n🏪 {shop}\n🌍 {customer_lang}\n==============================\n🆔 #{id}\n{emoji} {product}\n💰 {price}\n👤 {name}\n📱 {phone}\n📍 {address}\n🕜 {date}",
   "admin_order_line": "{emoji} {product}\n💰 {price}\n👤 {name}\n📱 {phone}\n📍 {address}"
 }

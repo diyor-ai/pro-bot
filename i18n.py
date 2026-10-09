@@ -2,7 +2,7 @@ import json
 import logging
 import os
 
-from config import LOCALES_DIR
+from config import ADMIN_LANG as _ADMIN_LANG_RAW, LOCALES_DIR
 
 logger = logging.getLogger(__name__)
 DEFAULT_LANG = "uz"
@@ -23,7 +23,19 @@ def load_locales():
 LOCALES = load_locales()
 
 
-def translate(lang, key, **kwargs):
+def resolve_admin_lang(value, locales=None):
+    """ADMIN_LANG if we have that locale, otherwise the default language (with a warning)."""
+    locales = LOCALES if locales is None else locales
+    if value in locales:
+        return value
+    logger.warning("ADMIN_LANG=%r is not one of %s, using %r", value, sorted(locales), DEFAULT_LANG)
+    return DEFAULT_LANG
+
+
+ADMIN_LANG = resolve_admin_lang(_ADMIN_LANG_RAW)
+
+
+def translate(lang, key, /, **kwargs):
     """Text for `key` in `lang` (falls back to the default language, then to the key itself)."""
     value = LOCALES.get(lang, {}).get(key)
     if value is None:
@@ -33,5 +45,5 @@ def translate(lang, key, **kwargs):
     return value.format(**kwargs) if kwargs else value
 
 
-def tr(context, key, **kwargs):
+def tr(context, key, /, **kwargs):
     return translate(context.user_data.get("lang", DEFAULT_LANG), key, **kwargs)

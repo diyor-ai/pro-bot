@@ -49,6 +49,6 @@
   "admin_broadcast_done": "📢 Рассылка завершена\n✅ Отправлено: {sent}\n❌ Ошибок: {failed}",
   "admin_broadcast_send_btn": "✅ Отправить",
   "admin_stats_text": "📊 Статистика:\n\nВсего: {total}\nСегодня: {today}\nНовых: {new}\nДоход: {revenue}",
-  "admin_new_order": "🆕 НОВЫЙ ЗАКАЗ!\n🏪 {shop}\n🌍 {lang}\n==============================\n🆔 #{id}\n{emoji} {product}\n💰 {price}\n👤 {name}\n📱 {phone}\n📍 {address}\n🕜 {date}",
+  "admin_new_order": "🆕 НОВЫЙ ЗАКАЗ!\n🏪 {shop}\n🌍 {customer_lang}\n==============================\n🆔 #{id}\n{emoji} {product}\n💰 {price}\n👤 {name}\n📱 {phone}\n📍 {address}\n🕜 {date}",
   "admin_order_line": "{emoji} {product}\n💰 {price}\n👤 {name}\n📱 {phone}\n📍 {address}"
 }

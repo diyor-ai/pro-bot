@@ -7,6 +7,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 ADMIN_IDS = [int(x.strip()) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip().isdigit()]
 SHOP_NAME = os.getenv("SHOP_NAME", "Pro Shop")
+ADMIN_LANG = os.getenv("ADMIN_LANG", "uz").strip().lower() or "uz"  # validated against locales in i18n
 SHEET_NAME = os.getenv("SHEET_NAME", "Mahsulotlar")
 
 SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]

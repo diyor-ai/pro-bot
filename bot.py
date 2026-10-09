@@ -18,12 +18,10 @@ from keyboards import (
     category_keyboard, products_keyboard, product_action_keyboard, confirm_keyboard,
     phone_keyboard, order_status_keyboard, broadcast_confirm_keyboard,
 )
-from i18n import DEFAULT_LANG, translate, tr as t
+from i18n import ADMIN_LANG, translate, tr as t
 from utils import format_price, parse_price, esc, sanitize, validate_phone, fuzzy_search, product_emoji
 
 logger = logging.getLogger(__name__)
-
-ADMIN_LANG = DEFAULT_LANG
 
 def ta(key, **kwargs):
     """Text for the admin (admin screens and notifications use ADMIN_LANG)."""
@@ -73,7 +71,7 @@ async def notify_admin(context, order):
         text = ta(
             "admin_new_order",
             shop=SHOP_NAME,
-            lang=order.get("til", "uz").upper(),
+            customer_lang=order.get("til", "uz").upper(),
             id=order["id"],
             emoji=product_emoji(order.get("kategoriya")),
             product=order["mahsulot"],
