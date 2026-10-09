@@ -32,5 +32,7 @@
   "status_processing": "Jarayonda",
   "status_delivering": "🚦 Yo'lda",
   "status_delivered": "✅ Yetkazildi",
-  "order_status_updated": "Holat yangilandi!"
+  "order_status_updated": "Holat yangilandi!",
+  "order_error": "❌ Xatolik yuz berdi, qaytadan urinib ko'ring.",
+  "order_contact": "Tez orada bog'lanamiz!"
 }

@@ -32,5 +32,7 @@
   "status_processing": "В обработке",
   "status_delivering": "🚦 В дороге",
   "status_delivered": "✅ Доставлено",
-  "order_status_updated": "Статус обновлен!"
+  "order_status_updated": "Статус обновлен!",
+  "order_error": "❌ Произошла ошибка, попробуйте ещё раз.",
+  "order_contact": "Скоро мы свяжемся с вами!"
 }

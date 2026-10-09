@@ -1,3 +1,4 @@
+import logging
 import time
 import json
 import os
@@ -8,6 +9,7 @@ from config import (
     ORDERS_SHEET, USERS_SHEET, CACHE_TTL
 )
 
+logger = logging.getLogger(__name__)
 _cache = {}
 
 def get_credentials():
@@ -23,6 +25,18 @@ def get_credentials():
         CREDENTIALS_FILE, scopes=SCOPES
     )
 
+def _is_available(value):
+    """Mavjud: TRUE/YES yoki 0 dan katta son. FALSE/NO/0 - mavjud emas. Bo'sh = mavjud."""
+    v = str(value if value is not None else "").strip().upper()
+    if v in ("", "TRUE", "YES", "HA"):
+        return True
+    if v in ("FALSE", "NO", "YO'Q"):
+        return False
+    try:
+        return float(v.replace(",", ".")) > 0
+    except ValueError:
+        return False
+
 def get_products(category=None):
     now = time.time()
     cache_key = "products_all" if category is None else f"products_{category}"
@@ -37,8 +51,7 @@ def get_products(category=None):
         sheet = client.open(SHEET_NAME).sheet1
         all_products = sheet.get_all_records()
 
-        available = [p for p in all_products
-                     if str(p.get("Mavjud", "TRUE")).upper() in ("TRUE", "1", "YES")]
+        available = [p for p in all_products if _is_available(p.get("Mavjud"))]
 
         if category:
             available = [p for p in available
@@ -46,7 +59,8 @@ def get_products(category=None):
 
         _cache[cache_key] = {"data": available, "last_updated": now}
         return available
-    except Exception:
+    except Exception as e:
+        logger.error("Sheets error in get_products: %s", e)
         return []
 
 def get_categories():
@@ -68,7 +82,8 @@ def get_product_by_id(product_id):
         pass
     return None
 
-def save_order(order: dict) -> bool:
+def save_order(order: dict):
+    """Buyurtmani saqlaydi va uning ID sini qaytaradi (xatoda None)."""
     try:
         creds = get_credentials()
         client = gspread.authorize(creds)
@@ -83,8 +98,8 @@ def save_order(order: dict) -> bool:
                 "Ism", "Telefon", "Manzil", "Til", "Status", "User_ID"
             ])
 
-        existing = ws.get_all_values()
-        next_id = len(existing)
+        ids = [int(v) for v in ws.col_values(1)[1:] if str(v).isdigit()]
+        next_id = max(ids, default=0) + 1
 
         ws.append_row([
             next_id,
@@ -101,9 +116,10 @@ def save_order(order: dict) -> bool:
         ])
 
         update_user(spreadsheet, order)
-        return True
-    except Exception:
-        return False
+        return next_id
+    except Exception as e:
+        logger.error("save_order failed: %s", e)
+        return None
 
 def update_user(spreadsheet, order):
     try:
@@ -171,6 +187,10 @@ def update_order_status(order_id, new_status) -> bool:
     except Exception:
         return False
 
+def _to_int(value):
+    digits = "".join(ch for ch in str(value).split(".")[0] if ch.isdigit())
+    return int(digits) if digits else 0
+
 def get_stats() -> dict:
     try:
         import datetime
@@ -184,9 +204,9 @@ def get_stats() -> dict:
 
         return {
             "total": len(records),
-            "today": len([r for r in records if r.get("Sana", "").startswith(today)]),
+            "today": len([r for r in records if str(r.get("Sana", "")).startswith(today)]),
             "new": len([r for r in records if r.get("Status", "") == "Yangi"]),
-            "revenue": sum(int(r.get("Narx", 0)) for r in records)
+            "revenue": sum(_to_int(r.get("Narx", 0)) for r in records)
         }
     except Exception:
         return {}

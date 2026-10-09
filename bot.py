@@ -1,7 +1,10 @@
+import html
 import json
+import logging
 import re
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 from config import TELEGRAM_TOKEN, SHOP_NAME, LOCALES_DIR
@@ -36,10 +39,38 @@ def t(context, key):
 
 # ============== HELPERS ==============
 def format_price(price):
-    return f"{int(price):,} so'm".replace(",", " ")
+    return f"{parse_price(price):,} so'm".replace(",", " ")
 
 def sanitize(text):
-    return text.replace("<", "&lt;").replace(">", "&gt;").strip()
+    return text.strip()
+
+def esc(text):
+    return html.escape(str(text), quote=False)
+
+def parse_price(value):
+    cleaned = re.sub(r"[^\d.,]", "", str(value)).replace(",", ".")
+    try:
+        return int(float(cleaned))
+    except ValueError:
+        return 0
+
+async def safe_edit(query, text, **kwargs):
+    """Edit the message; if it is a photo (no text), replace it with a new message."""
+    try:
+        await query.edit_message_text(text, **kwargs)
+    except BadRequest as e:
+        msg = str(e).lower()
+        if "not modified" in msg:
+            return
+        if "no text in the message" not in msg:
+            raise
+        try:
+            await query.delete_message()
+        except Exception:
+            pass
+        await query.message.chat.send_message(text, **kwargs)
+
+logger = logging.getLogger(__name__)
 
 def validate_phone(phone):
     phone = phone.strip().replace(" ", "").replace("-", "")
@@ -84,6 +115,7 @@ async def notify_admin(context, order):
             f"\U0001f3ea {SHOP_NAME}\n"
             f"\U0001f30d {order.get('til', 'uz').upper()}\n"
             f"{'=' * 30}\n"
+            f"\U0001f194 #{order['id']}\n"
             f"\U0001f45f {order['mahsulot']}\n"
             f"\U0001f4b0 {format_price(order['narx'])}\n"
             f"\U0001f464 {order['ism']}\n"
@@ -94,10 +126,10 @@ async def notify_admin(context, order):
         await context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=text,
-            reply_markup=order_status_keyboard("latest")
+            reply_markup=order_status_keyboard(order["id"])
         )
     except Exception as e:
-        print(f"Admin notify error: {e}")
+        logger.error("Admin notify error: %s", e)
 
 # ============== HANDLERS ==============
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -111,19 +143,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("lang_"):
         lang = query.data.replace("lang_", "")
         context.user_data["lang"] = lang
-        await query.edit_message_text(
-            f"\U0001f3ea *{SHOP_NAME}*\n\n{t(context, 'welcome')}",
+        await safe_edit(query, 
+            f"\U0001f3ea <b>{esc(SHOP_NAME)}</b>\n\n{t(context, 'welcome')}",
             reply_markup=main_menu_keyboard(context),
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
         return
 
     # Back
     if query.data == "back":
-        await query.edit_message_text(
-            f"\U0001f3ea *{SHOP_NAME}*",
+        await safe_edit(query, 
+            f"\U0001f3ea <b>{esc(SHOP_NAME)}</b>",
             reply_markup=main_menu_keyboard(context),
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
         return
 
@@ -133,18 +165,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not categories or len(categories) == 0:
             products = get_products()
             if not products:
-                await query.edit_message_text("❌ Mahsulotlar topilmadi", reply_markup=back_keyboard(context))
+                await safe_edit(query, "❌ Mahsulotlar topilmadi", reply_markup=back_keyboard(context))
                 return
-            await query.edit_message_text(
-                f"*{t(context, 'choose_product')}*",
+            await safe_edit(query, 
+                f"<b>{t(context, 'choose_product')}</b>",
                 reply_markup=products_keyboard(context, products),
-                parse_mode='Markdown'
+                parse_mode='HTML'
             )
             return
-        await query.edit_message_text(
-            f"*{t(context, 'choose_category')}*",
+        await safe_edit(query, 
+            f"<b>{t(context, 'choose_category')}</b>",
             reply_markup=category_keyboard(context, categories),
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
         return
 
@@ -153,12 +185,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         category = query.data[4:]
         products = get_products(category)
         if not products:
-            await query.edit_message_text(t(context, "not_found"), reply_markup=back_keyboard(context))
+            await safe_edit(query, t(context, "not_found"), reply_markup=back_keyboard(context))
             return
-        await query.edit_message_text(
-            f"*{t(context, 'choose_product')}*",
+        await safe_edit(query, 
+            f"<b>{t(context, 'choose_product')}</b>",
             reply_markup=products_keyboard(context, products),
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
         return
 
@@ -167,10 +199,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pid = int(query.data.split("_")[1])
         p = get_product_by_id(pid)
         if not p:
-            await query.edit_message_text("❌ Mahsulot topilmadi", reply_markup=back_keyboard(context))
+            await safe_edit(query, "❌ Mahsulot topilmadi", reply_markup=back_keyboard(context))
             return
 
-        cap = f"\U0001f45f *{p['Nomi']}*\n\n\U0001f4b0 {format_price(p['Narxi'])}\n\U0001f4dd {p.get('Tavsif', '-')}\n\n{t(context, 'buy_confirm')}"
+        cap = f"\U0001f45f <b>{esc(p['Nomi'])}</b>\n\n\U0001f4b0 {format_price(p['Narxi'])}\n\U0001f4dd {esc(p.get('Tavsif', '-'))}\n\n{t(context, 'buy_confirm')}"
 
         try:
             rasm = p.get("Rasm_URL", "")
@@ -180,14 +212,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     photo=rasm,
                     caption=cap,
                     reply_markup=product_action_keyboard(context, p['ID']),
-                    parse_mode='Markdown'
+                    parse_mode='HTML'
                 )
                 await query.delete_message()
                 return
         except Exception:
             pass
 
-        await query.edit_message_text(cap, reply_markup=product_action_keyboard(context, p['ID']), parse_mode='Markdown')
+        await safe_edit(query, cap, reply_markup=product_action_keyboard(context, p['ID']), parse_mode='HTML')
         return
 
     # Buy product
@@ -196,9 +228,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         p = get_product_by_id(pid)
         if not p:
             return
-        context.user_data['order'] = {"mahsulot": p['Nomi'], "narx": p['Narxi'], "user_id": query.from_user.id}
+        context.user_data['order'] = {
+            "mahsulot": p['Nomi'],
+            "narx": parse_price(p['Narxi']),
+            "kategoriya": p.get('Kategoriya', ''),
+            "user_id": query.from_user.id,
+        }
         context.user_data['step'] = 'ism'
-        await query.edit_message_text(t(context, "ask_name"))
+        await safe_edit(query, t(context, "ask_name"))
         return
 
     # Confirm order
@@ -206,10 +243,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         order = context.user_data.get('pending_order')
         if not order:
             return
-        save_order(order)
+        order_id = save_order(order)
+        if not order_id:
+            await query.answer(t(context, "order_error"), show_alert=True)
+            return
+        order['id'] = order_id
         await notify_admin(context, order)
-        await query.edit_message_text(
-            f"{t(context, 'order_done')}!\n\n\U0001f64f Tez orada bog'lanamiz!",
+        await safe_edit(query, 
+            f"{t(context, 'order_done')}\n\n\U0001f64f {t(context, 'order_contact')}",
             reply_markup=main_menu_keyboard(context)
         )
         context.user_data['step'] = None
@@ -219,7 +260,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Cancel order
     if query.data == "cancel_order":
-        await query.edit_message_text(t(context, "order_cancelled"), reply_markup=main_menu_keyboard(context))
+        await safe_edit(query, t(context, "order_cancelled"), reply_markup=main_menu_keyboard(context))
         context.user_data['step'] = None
         context.user_data['order'] = {}
         context.user_data['pending_order'] = None
@@ -228,7 +269,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Search
     if query.data == "search":
         context.user_data['step'] = 'searching'
-        await query.edit_message_text(t(context, "search_prompt"))
+        await safe_edit(query, t(context, "search_prompt"))
         return
 
     # Admin
@@ -238,7 +279,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         orders = get_orders(status="Yangi", limit=10)
         if not orders:
-            await query.edit_message_text(t(context, "no_orders"), reply_markup=back_keyboard(context))
+            await safe_edit(query, t(context, "no_orders"), reply_markup=back_keyboard(context))
             return
         for o in orders:
             txt = f"\U0001f45f {o.get('Mahsulot', '-')}\n\U0001f4b0 {format_price(o.get('Narx', 0))}\n\U0001f464 {o.get('Ism', '-')}\n\U0001f4f1 {o.get('Telefon', '-')}\n\U0001f4cd {o.get('Manzil', '-')}"
@@ -256,7 +297,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         stats = get_stats()
         txt = f"\U0001f4ca Statistika:\n\nJami: {stats.get('total', 0)}\nBugun: {stats.get('today', 0)}\nYangi: {stats.get('new', 0)}\nDaromad: {stats.get('revenue', 0):,} so'm".replace(",", " ")
-        await query.edit_message_text(txt, reply_markup=back_keyboard(context))
+        await safe_edit(query, txt, reply_markup=back_keyboard(context))
         return
 
     if query.data == "admin_broadcast":
@@ -264,17 +305,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("❌ Access denied")
             return
         context.user_data['step'] = 'broadcast'
-        await query.edit_message_text("Xabar matnini yozing:", reply_markup=back_keyboard(context))
+        await safe_edit(query, "Xabar matnini yozing:", reply_markup=back_keyboard(context))
         return
 
     # Status update
     if query.data.startswith("status_"):
+        if not is_admin(query.from_user.id):
+            await query.answer("❌ Access denied", show_alert=True)
+            return
         parts = query.data.split("_")
         if len(parts) >= 3:
             order_id, st = parts[1], parts[2]
             status_map = {"processing": "Jarayonda", "delivering": "Yo'lda", "delivered": "Yetkazildi"}
-            update_order_status(order_id, status_map.get(st, st))
-            await query.answer(t(context, "order_status_updated"))
+            if update_order_status(order_id, status_map.get(st, st)):
+                await query.answer(t(context, "order_status_updated"))
+            else:
+                await query.answer(t(context, "order_error"), show_alert=True)
         return
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -285,6 +331,8 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.contact:
         phone = update.message.contact.phone_number
         validated = validate_phone(phone)
+        if context.user_data.get('step') != 'telefon':
+            return
         if validated:
             context.user_data['order']['telefon'] = validated
             context.user_data['step'] = 'manzil'
@@ -303,9 +351,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         found = fuzzy_search(sanitize(text), products)
         if found:
             await update.message.reply_text(
-                f"✅ *{len(found)} {t(context, 'found')}:*",
+                f"✅ <b>{len(found)} {t(context, 'found')}:</b>",
                 reply_markup=products_keyboard(context, found),
-                parse_mode='Markdown'
+                parse_mode='HTML'
             )
         else:
             await update.message.reply_text(t(context, "not_found"))
@@ -347,14 +395,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['pending_order'] = order
 
         await update.message.reply_text(
-            f"\U0001f4cb *{t(context, 'confirm_order')}*\n\n"
-            f"\U0001f45f {order['mahsulot']}\n"
+            f"\U0001f4cb <b>{t(context, 'confirm_order')}</b>\n\n"
+            f"\U0001f45f {esc(order['mahsulot'])}\n"
             f"\U0001f4b0 {format_price(order['narx'])}\n"
-            f"\U0001f464 {order['ism']}\n"
-            f"\U0001f4f1 {order['telefon']}\n"
-            f"\U0001f4cd {order['manzil']}",
+            f"\U0001f464 {esc(order['ism'])}\n"
+            f"\U0001f4f1 {esc(order['telefon'])}\n"
+            f"\U0001f4cd {esc(order['manzil'])}",
             reply_markup=confirm_keyboard(context),
-            parse_mode='Markdown'
+            parse_mode='HTML'
         )
 
 # ============== ADMIN COMMAND ==============
@@ -364,10 +412,15 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("\U0001f4cb Admin panel:", reply_markup=admin_keyboard())
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    logger.error("Unhandled exception", exc_info=context.error)
+
 # ============== MAIN ==============
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
+    logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s", level=logging.INFO)
+    app.add_error_handler(error_handler)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(button_handler))

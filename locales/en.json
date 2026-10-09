@@ -32,5 +32,7 @@
   "status_processing": "Processing",
   "status_delivering": "🚦 Delivering",
   "status_delivered": "✅ Delivered",
-  "order_status_updated": "Status updated!"
+  "order_status_updated": "Status updated!",
+  "order_error": "❌ Something went wrong, please try again.",
+  "order_contact": "We will contact you soon!"
 }

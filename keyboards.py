@@ -1,6 +1,10 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from config import ADMIN_IDS
 
+def _to_int(value):
+    digits = "".join(ch for ch in str(value).split(".")[0] if ch.isdigit())
+    return int(digits) if digits else 0
+
 def lang_keyboard():
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("\U0001f1fa\U0001f1ff O'zbek", callback_data="lang_uz"),
@@ -76,7 +80,7 @@ def products_keyboard(context, products):
 
     buttons = [
         [InlineKeyboardButton(
-            f"{p['Nomi']} \U0001f4b0 {int(p['Narxi']):,}".replace(",", " "),
+            f"{p['Nomi']} \U0001f4b0 {_to_int(p['Narxi']):,}".replace(",", " "),
             callback_data=f"product_{p['ID']}"
         )] for p in products
     ]
