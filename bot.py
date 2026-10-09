@@ -44,6 +44,16 @@ async def save_order_locked(order):
     async with ORDER_LOCK:
         return await asyncio.to_thread(save_order, order)
 
+async def resolve_category(context, index):
+    """Map a short `cat_<index>` callback back to the category name (None if it no longer exists)."""
+    categories = context.user_data.get("categories")
+    if not categories:
+        categories = await asyncio.to_thread(get_categories)
+        context.user_data["categories"] = categories
+    if 0 <= index < len(categories):
+        return categories[index]
+    return None
+
 # ============== ADMIN ==============
 def is_admin(user_id):
     return user_id in ADMIN_IDS
@@ -139,6 +149,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='HTML'
             )
             return
+        context.user_data["categories"] = categories
         await safe_edit(query, 
             f"<b>{t(context, 'choose_category')}</b>",
             reply_markup=category_keyboard(context, categories),
@@ -148,8 +159,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Category filter
     if query.data.startswith("cat_"):
-        category = query.data[4:]
-        products = await asyncio.to_thread(get_products, category)
+        index = query.data[4:]
+        category = await resolve_category(context, int(index)) if index.isdigit() else None
+        products = await asyncio.to_thread(get_products, category) if category else []
         if not products:
             await safe_edit(query, t(context, "not_found"), reply_markup=back_keyboard(context))
             return

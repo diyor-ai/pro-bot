@@ -36,7 +36,8 @@ def broadcast_confirm_keyboard():
     ]])
 
 def category_keyboard(context, categories):
-    buttons = [[InlineKeyboardButton(cat, callback_data=f"cat_{cat}")] for cat in categories]
+    # callback_data is limited to 64 bytes, so send the index and map it back in the handler
+    buttons = [[InlineKeyboardButton(cat, callback_data=f"cat_{i}")] for i, cat in enumerate(categories)]
     buttons.append([InlineKeyboardButton(tr(context, "back", "\U0001f519 Back"), callback_data="back")])
     return InlineKeyboardMarkup(buttons)
 
