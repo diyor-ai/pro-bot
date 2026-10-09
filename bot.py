@@ -19,7 +19,7 @@ from keyboards import (
     phone_keyboard, order_status_keyboard, broadcast_confirm_keyboard,
 )
 from i18n import tr as t
-from utils import format_price, parse_price, esc, sanitize, validate_phone, fuzzy_search
+from utils import format_price, parse_price, esc, sanitize, validate_phone, fuzzy_search, product_emoji
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ async def notify_admin(context, order):
             f"\U0001f30d {order.get('til', 'uz').upper()}\n"
             f"{'=' * 30}\n"
             f"\U0001f194 #{order['id']}\n"
-            f"\U0001f45f {order['mahsulot']}\n"
+            f"{product_emoji(order.get('kategoriya'))} {order['mahsulot']}\n"
             f"\U0001f4b0 {format_price(order['narx'])}\n"
             f"\U0001f464 {order['ism']}\n"
             f"\U0001f4f1 {order['telefon']}\n"
@@ -184,7 +184,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_edit(query, "❌ Mahsulot topilmadi", reply_markup=back_keyboard(context))
             return
 
-        cap = f"\U0001f45f <b>{esc(p['Nomi'])}</b>\n\n\U0001f4b0 {format_price(p['Narxi'])}\n\U0001f4dd {esc(p.get('Tavsif', '-'))}\n\n{t(context, 'buy_confirm')}"
+        cap = f"{product_emoji(p.get('Kategoriya'))} <b>{esc(p['Nomi'])}</b>\n\n\U0001f4b0 {format_price(p['Narxi'])}\n\U0001f4dd {esc(p.get('Tavsif', '-'))}\n\n{t(context, 'buy_confirm')}"
 
         try:
             rasm = p.get("Rasm_URL", "")
@@ -269,7 +269,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_edit(query, t(context, "no_orders"), reply_markup=back_keyboard(context))
             return
         for o in orders:
-            txt = f"\U0001f45f {o.get('Mahsulot', '-')}\n\U0001f4b0 {format_price(o.get('Narx', 0))}\n\U0001f464 {o.get('Ism', '-')}\n\U0001f4f1 {o.get('Telefon', '-')}\n\U0001f4cd {o.get('Manzil', '-')}"
+            txt = f"{product_emoji(o.get('Kategoriya'))} {o.get('Mahsulot', '-')}\n\U0001f4b0 {format_price(o.get('Narx', 0))}\n\U0001f464 {o.get('Ism', '-')}\n\U0001f4f1 {o.get('Telefon', '-')}\n\U0001f4cd {o.get('Manzil', '-')}"
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=txt,
@@ -414,7 +414,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             f"\U0001f4cb <b>{t(context, 'confirm_order')}</b>\n\n"
-            f"\U0001f45f {esc(order['mahsulot'])}\n"
+            f"{product_emoji(order.get('kategoriya'))} {esc(order['mahsulot'])}\n"
             f"\U0001f4b0 {format_price(order['narx'])}\n"
             f"\U0001f464 {esc(order['ism'])}\n"
             f"\U0001f4f1 {esc(order['telefon'])}\n"

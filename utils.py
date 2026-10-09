@@ -4,7 +4,7 @@ import re
 
 from rapidfuzz import fuzz
 
-from config import FUZZY_THRESHOLD
+from config import CATEGORY_EMOJI, DEFAULT_PRODUCT_EMOJI, FUZZY_THRESHOLD
 
 
 def parse_price(value):
@@ -84,3 +84,9 @@ def next_order_id(id_column_values):
     """Next order ID from the raw ID column (header and junk cells are ignored)."""
     ids = [int(str(v)) for v in id_column_values if str(v).strip().isdigit()]
     return max(ids, default=0) + 1
+
+
+def product_emoji(category, mapping=None):
+    """Emoji for a product's category; neutral default when the category is unknown."""
+    mapping = CATEGORY_EMOJI if mapping is None else mapping
+    return mapping.get(str(category or "").strip().lower(), DEFAULT_PRODUCT_EMOJI)

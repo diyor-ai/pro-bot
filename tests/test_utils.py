@@ -94,3 +94,21 @@ def test_fuzzy_search_case_insensitive_and_by_category():
 def test_fuzzy_search_no_match_and_threshold():
     assert fuzzy_search("zzzzqqq", PRODUCTS) == []
     assert fuzzy_search("nike", PRODUCTS, threshold=101) == []
+
+
+def test_product_emoji_by_category():
+    from config import DEFAULT_PRODUCT_EMOJI
+    from utils import product_emoji
+
+    assert product_emoji("Krossovka") == "\U0001f45f"
+    assert product_emoji(" aksessuar ") == "\U0001f45c"
+    assert product_emoji("Kamar") == DEFAULT_PRODUCT_EMOJI == "\U0001f6cd"
+    assert product_emoji(None) == DEFAULT_PRODUCT_EMOJI
+    assert product_emoji("Kamar", {"kamar": "x"}) == "x"
+
+
+def test_parse_category_emoji():
+    from config import parse_category_emoji
+
+    assert parse_category_emoji("Krossovka=A, Kiyim = B,bad,=C,D=") == {"krossovka": "A", "kiyim": "B"}
+    assert parse_category_emoji("") == {}
