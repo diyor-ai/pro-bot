@@ -481,6 +481,12 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error("Unhandled exception", exc_info=context.error)
 
 # ============== MAIN ==============
+def setup_logging():
+    logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s", level=logging.INFO)
+    # httpx/httpcore log every request URL at INFO, and Telegram URLs contain the bot token.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
 def build_persistence(path=PERSISTENCE_FILE):
     """Keep per-user state (language, order in progress) across restarts."""
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
@@ -503,7 +509,7 @@ def main():
         .build()
     )
 
-    logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s", level=logging.INFO)
+    setup_logging()
     app.add_error_handler(error_handler)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_cmd))
