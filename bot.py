@@ -36,6 +36,14 @@ async def safe_edit(query, text, **kwargs):
             logger.warning("Could not delete photo message", exc_info=True)
         await query.message.chat.send_message(text, **kwargs)
 
+# Order IDs are max+1, so reading the max and appending must not interleave.
+# This only protects a single process (see README, Known limitations).
+ORDER_LOCK = asyncio.Lock()
+
+async def save_order_locked(order):
+    async with ORDER_LOCK:
+        return await asyncio.to_thread(save_order, order)
+
 # ============== ADMIN ==============
 def is_admin(user_id):
     return user_id in ADMIN_IDS
@@ -85,8 +93,13 @@ async def send_broadcast(bot, user_ids, text, delay=BROADCAST_DELAY):
     return sent, failed
 
 # ============== HANDLERS ==============
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(t(context, "choose_lang"), reply_markup=lang_keyboard())
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/start always resets the flow (order, search, broadcast) and shows the language menu."""
+    context.user_data.clear()
+    await show_language_menu(update, context)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -201,7 +214,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         order = context.user_data.get('pending_order')
         if not order:
             return
-        order_id = await asyncio.to_thread(save_order, order)
+        order_id = await save_order_locked(order)
         if not order_id:
             await query.answer(t(context, "order_error"), show_alert=True)
             return
@@ -327,7 +340,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not step:
-        await start(update, context)
+        await show_language_menu(update, context)
         return
 
     # Search
