@@ -1,10 +1,14 @@
 import asyncio
 import logging
+import os
 from datetime import datetime
 from telegram import Update, ReplyKeyboardRemove
 from telegram.error import BadRequest, Forbidden, RetryAfter, TelegramError
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from config import TELEGRAM_TOKEN, SHOP_NAME, ADMIN_CHAT_ID, ADMIN_IDS, BROADCAST_DELAY
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler, MessageHandler, PicklePersistence,
+    PersistenceInput, filters, ContextTypes,
+)
+from config import TELEGRAM_TOKEN, SHOP_NAME, ADMIN_CHAT_ID, ADMIN_IDS, BROADCAST_DELAY, PERSISTENCE_FILE
 from sheets import (
     get_products, get_categories, get_product_by_id, save_order, get_orders,
     get_stats, update_order_status, get_user_ids,
@@ -430,10 +434,20 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error("Unhandled exception", exc_info=context.error)
 
 # ============== MAIN ==============
+def build_persistence(path=PERSISTENCE_FILE):
+    """Keep per-user state (language, order in progress) across restarts."""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    return PicklePersistence(
+        filepath=path,
+        store_data=PersistenceInput(bot_data=False, chat_data=False, callback_data=False),
+        update_interval=10,
+    )
+
 def main():
     app = (
         Application.builder()
         .token(TELEGRAM_TOKEN)
+        .persistence(build_persistence())
         .concurrent_updates(True)
         .connect_timeout(15)
         .read_timeout(20)

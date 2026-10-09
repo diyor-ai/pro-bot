@@ -16,4 +16,5 @@ USERS_SHEET = "Users"
 LOCALES_DIR = "locales"
 CACHE_TTL = int(os.getenv("CACHE_TTL", "60"))
 FUZZY_THRESHOLD = int(os.getenv("FUZZY_THRESHOLD", "65"))
+PERSISTENCE_FILE = os.getenv("PERSISTENCE_FILE", "data/bot_data.pickle")
 BROADCAST_DELAY = 0.05  # seconds between messages (Telegram limit is ~30/s)
