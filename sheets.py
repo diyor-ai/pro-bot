@@ -4,6 +4,7 @@ import json
 import os
 import gspread
 from google.oauth2.service_account import Credentials
+from utils import is_available, next_order_id, parse_price
 from config import (
     SCOPES, CREDENTIALS_FILE, SHEET_NAME,
     ORDERS_SHEET, USERS_SHEET, CACHE_TTL
@@ -20,22 +21,10 @@ def get_credentials():
                 json.loads(creds_json), scopes=SCOPES
             )
     except Exception:
-        pass
+        logger.exception("GOOGLE_CREDENTIALS env is invalid, falling back to %s", CREDENTIALS_FILE)
     return Credentials.from_service_account_file(
         CREDENTIALS_FILE, scopes=SCOPES
     )
-
-def _is_available(value):
-    """Mavjud: TRUE/YES yoki 0 dan katta son. FALSE/NO/0 - mavjud emas. Bo'sh = mavjud."""
-    v = str(value if value is not None else "").strip().upper()
-    if v in ("", "TRUE", "YES", "HA"):
-        return True
-    if v in ("FALSE", "NO", "YO'Q"):
-        return False
-    try:
-        return float(v.replace(",", ".")) > 0
-    except ValueError:
-        return False
 
 def get_products(category=None):
     now = time.time()
@@ -51,7 +40,7 @@ def get_products(category=None):
         sheet = client.open(SHEET_NAME).sheet1
         all_products = sheet.get_all_records()
 
-        available = [p for p in all_products if _is_available(p.get("Mavjud"))]
+        available = [p for p in all_products if is_available(p.get("Mavjud"))]
 
         if category:
             available = [p for p in available
@@ -59,8 +48,8 @@ def get_products(category=None):
 
         _cache[cache_key] = {"data": available, "last_updated": now}
         return available
-    except Exception as e:
-        logger.error("Sheets error in get_products: %s", e)
+    except Exception:
+        logger.exception("Sheets error in get_products")
         return []
 
 def get_categories():
@@ -73,13 +62,9 @@ def get_categories():
     return categories if categories else ["Boshqa"]
 
 def get_product_by_id(product_id):
-    try:
-        products = get_products()
-        for p in products:
-            if str(p.get("ID")) == str(product_id):
-                return p
-    except Exception:
-        pass
+    for p in get_products():
+        if str(p.get("ID")) == str(product_id):
+            return p
     return None
 
 def save_order(order: dict):
@@ -91,15 +76,14 @@ def save_order(order: dict):
 
         try:
             ws = spreadsheet.worksheet(ORDERS_SHEET)
-        except Exception:
+        except gspread.WorksheetNotFound:
             ws = spreadsheet.add_worksheet(ORDERS_SHEET, rows=1000, cols=12)
             ws.append_row([
                 "ID", "Sana", "Mahsulot", "Narx", "Kategoriya",
                 "Ism", "Telefon", "Manzil", "Til", "Status", "User_ID"
             ])
 
-        ids = [int(v) for v in ws.col_values(1)[1:] if str(v).isdigit()]
-        next_id = max(ids, default=0) + 1
+        next_id = next_order_id(ws.col_values(1)[1:])
 
         ws.append_row([
             next_id,
@@ -117,15 +101,15 @@ def save_order(order: dict):
 
         update_user(spreadsheet, order)
         return next_id
-    except Exception as e:
-        logger.error("save_order failed: %s", e)
+    except Exception:
+        logger.exception("save_order failed")
         return None
 
 def update_user(spreadsheet, order):
     try:
         try:
             ws = spreadsheet.worksheet(USERS_SHEET)
-        except Exception:
+        except gspread.WorksheetNotFound:
             ws = spreadsheet.add_worksheet(USERS_SHEET, rows=1000, cols=7)
             ws.append_row([
                 "User_ID", "Ism", "Telefon", "Til",
@@ -153,7 +137,7 @@ def update_user(spreadsheet, order):
             1
         ])
     except Exception:
-        pass
+        logger.exception("update_user failed for order of user %s", order.get("user_id"))
 
 def get_orders(status=None, limit=20):
     try:
@@ -169,6 +153,7 @@ def get_orders(status=None, limit=20):
 
         return records[:limit]
     except Exception:
+        logger.exception("get_orders failed")
         return []
 
 def update_order_status(order_id, new_status) -> bool:
@@ -183,13 +168,11 @@ def update_order_status(order_id, new_status) -> bool:
             if str(row[0]) == str(order_id):
                 ws.update_cell(i, 10, new_status)
                 return True
+        logger.warning("update_order_status: order %s not found", order_id)
         return False
     except Exception:
+        logger.exception("update_order_status failed for order %s", order_id)
         return False
-
-def _to_int(value):
-    digits = "".join(ch for ch in str(value).split(".")[0] if ch.isdigit())
-    return int(digits) if digits else 0
 
 def get_stats() -> dict:
     try:
@@ -206,7 +189,24 @@ def get_stats() -> dict:
             "total": len(records),
             "today": len([r for r in records if str(r.get("Sana", "")).startswith(today)]),
             "new": len([r for r in records if r.get("Status", "") == "Yangi"]),
-            "revenue": sum(_to_int(r.get("Narx", 0)) for r in records)
+            "revenue": sum(parse_price(r.get("Narx", 0)) for r in records)
         }
     except Exception:
+        logger.exception("get_stats failed")
         return {}
+
+def get_user_ids():
+    """Unique Telegram User_IDs from the Users sheet (for broadcast)."""
+    try:
+        creds = get_credentials()
+        client = gspread.authorize(creds)
+        ws = client.open(SHEET_NAME).worksheet(USERS_SHEET)
+        ids = []
+        for v in ws.col_values(1)[1:]:
+            v = str(v).strip()
+            if v.lstrip("-").isdigit() and int(v) not in ids:
+                ids.append(int(v))
+        return ids
+    except Exception:
+        logger.exception("get_user_ids failed")
+        return None

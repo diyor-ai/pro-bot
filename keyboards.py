@@ -1,9 +1,8 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from config import ADMIN_IDS
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-def _to_int(value):
-    digits = "".join(ch for ch in str(value).split(".")[0] if ch.isdigit())
-    return int(digits) if digits else 0
+from i18n import tr
+from utils import parse_price
+
 
 def lang_keyboard():
     return InlineKeyboardMarkup([[
@@ -13,36 +12,14 @@ def lang_keyboard():
     ]])
 
 def main_menu_keyboard(context):
-    from config import LOCALES_DIR
-    import json
-    lang = context.user_data.get("lang", "uz")
-    try:
-        with open(f"{LOCALES_DIR}/{lang}.json", encoding="utf-8") as f:
-            l = json.load(f)
-        all_p = l.get("all_products", "\U0001f4e6 Products")
-        srch = l.get("search", "\U0001f50d Search")
-    except Exception:
-        all_p = "\U0001f4e6 Products"
-        srch = "\U0001f50d Search"
-
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(all_p, callback_data="show_products")],
-        [InlineKeyboardButton(srch, callback_data="search")],
+        [InlineKeyboardButton(tr(context, "all_products", "\U0001f4e6 Products"), callback_data="show_products")],
+        [InlineKeyboardButton(tr(context, "search", "\U0001f50d Search"), callback_data="search")],
     ])
 
 def back_keyboard(context):
-    from config import LOCALES_DIR
-    import json
-    lang = context.user_data.get("lang", "uz")
-    try:
-        with open(f"{LOCALES_DIR}/{lang}.json", encoding="utf-8") as f:
-            l = json.load(f)
-        back = l.get("back", "\U0001f519 Back")
-    except Exception:
-        back = "\U0001f519 Back"
-
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton(back, callback_data="back")
+        InlineKeyboardButton(tr(context, "back", "\U0001f519 Back"), callback_data="back")
     ]])
 
 def admin_keyboard():
@@ -52,75 +29,37 @@ def admin_keyboard():
         [InlineKeyboardButton("\U0001f4e2 Broadcast", callback_data="admin_broadcast")],
     ])
 
-def category_keyboard(context, categories):
-    from config import LOCALES_DIR
-    import json
-    lang = context.user_data.get("lang", "uz")
-    try:
-        with open(f"{LOCALES_DIR}/{lang}.json", encoding="utf-8") as f:
-            l = json.load(f)
-        back = l.get("back", "\U0001f519 Back")
-    except Exception:
-        back = "\U0001f519 Back"
+def broadcast_confirm_keyboard():
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Yuborish", callback_data="broadcast_send"),
+        InlineKeyboardButton("❌ Bekor qilish", callback_data="broadcast_cancel"),
+    ]])
 
-    buttons = [[InlineKeyboardButton(cat, callback_data=f"cat_{cat}") for cat in categories]]
-    buttons.append([InlineKeyboardButton(back, callback_data="back")])
+def category_keyboard(context, categories):
+    buttons = [[InlineKeyboardButton(cat, callback_data=f"cat_{cat}")] for cat in categories]
+    buttons.append([InlineKeyboardButton(tr(context, "back", "\U0001f519 Back"), callback_data="back")])
     return InlineKeyboardMarkup(buttons)
 
 def products_keyboard(context, products):
-    from config import LOCALES_DIR
-    import json
-    lang = context.user_data.get("lang", "uz")
-    try:
-        with open(f"{LOCALES_DIR}/{lang}.json", encoding="utf-8") as f:
-            l = json.load(f)
-        back = l.get("back", "\U0001f519 Back")
-    except Exception:
-        back = "\U0001f519 Back"
-
     buttons = [
         [InlineKeyboardButton(
-            f"{p['Nomi']} \U0001f4b0 {_to_int(p['Narxi']):,}".replace(",", " "),
+            f"{p['Nomi']} \U0001f4b0 {parse_price(p['Narxi']):,}".replace(",", " "),
             callback_data=f"product_{p['ID']}"
         )] for p in products
     ]
-    buttons.append([InlineKeyboardButton(back, callback_data="back")])
+    buttons.append([InlineKeyboardButton(tr(context, "back", "\U0001f519 Back"), callback_data="back")])
     return InlineKeyboardMarkup(buttons)
 
 def product_action_keyboard(context, product_id):
-    from config import LOCALES_DIR
-    import json
-    lang = context.user_data.get("lang", "uz")
-    try:
-        with open(f"{LOCALES_DIR}/{lang}.json", encoding="utf-8") as f:
-            l = json.load(f)
-        yes = l.get("yes", "✅ Yes")
-        no = l.get("no", "❌ No")
-    except Exception:
-        yes = "✅ Yes"
-        no = "❌ No"
-
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(yes, callback_data=f"buy_{product_id}"),
-         InlineKeyboardButton(no, callback_data="back")]
+        [InlineKeyboardButton(tr(context, "yes", "✅ Yes"), callback_data=f"buy_{product_id}"),
+         InlineKeyboardButton(tr(context, "no", "❌ No"), callback_data="back")]
     ])
 
 def confirm_keyboard(context):
-    from config import LOCALES_DIR
-    import json
-    lang = context.user_data.get("lang", "uz")
-    try:
-        with open(f"{LOCALES_DIR}/{lang}.json", encoding="utf-8") as f:
-            l = json.load(f)
-        confirm = l.get("confirm_btn", "✅ Confirm")
-        cancel = l.get("cancel_btn", "❌ Cancel")
-    except Exception:
-        confirm = "✅ Confirm"
-        cancel = "❌ Cancel"
-
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(confirm, callback_data="confirm_order")],
-        [InlineKeyboardButton(cancel, callback_data="cancel_order")]
+        [InlineKeyboardButton(tr(context, "confirm_btn", "✅ Confirm"), callback_data="confirm_order")],
+        [InlineKeyboardButton(tr(context, "cancel_btn", "❌ Cancel"), callback_data="cancel_order")]
     ])
 
 def order_status_keyboard(order_id):
@@ -131,18 +70,8 @@ def order_status_keyboard(order_id):
     ])
 
 def phone_keyboard(context):
-    from config import LOCALES_DIR
-    import json
-    lang = context.user_data.get("lang", "uz")
-    try:
-        with open(f"{LOCALES_DIR}/{lang}.json", encoding="utf-8") as f:
-            l = json.load(f)
-        share = l.get("share_phone", "Share phone")
-    except Exception:
-        share = "Share phone"
-
     return ReplyKeyboardMarkup(
-        [[KeyboardButton(share, request_contact=True)]],
+        [[KeyboardButton(tr(context, "share_phone", "Share phone"), request_contact=True)]],
         resize_keyboard=True,
         one_time_keyboard=True
     )

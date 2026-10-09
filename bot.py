@@ -1,59 +1,25 @@
-import html
-import json
+import asyncio
 import logging
-import re
 from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.error import BadRequest
+from telegram import Update, ReplyKeyboardRemove
+from telegram.error import BadRequest, Forbidden, RetryAfter, TelegramError
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from dotenv import load_dotenv
-from config import TELEGRAM_TOKEN, SHOP_NAME, LOCALES_DIR
-from sheets import get_products, get_categories, get_product_by_id, save_order, get_orders, get_stats, update_order_status
+from config import TELEGRAM_TOKEN, SHOP_NAME, ADMIN_CHAT_ID, ADMIN_IDS, BROADCAST_DELAY
+from sheets import (
+    get_products, get_categories, get_product_by_id, save_order, get_orders,
+    get_stats, update_order_status, get_user_ids,
+)
 from keyboards import (
     lang_keyboard, main_menu_keyboard, back_keyboard, admin_keyboard,
     category_keyboard, products_keyboard, product_action_keyboard, confirm_keyboard,
-    phone_keyboard, order_status_keyboard
+    phone_keyboard, order_status_keyboard, broadcast_confirm_keyboard,
 )
-from rapidfuzz import fuzz
+from i18n import tr as t
+from utils import format_price, parse_price, esc, sanitize, validate_phone, fuzzy_search
 
-load_dotenv()
-
-# ============== LOCALES ==============
-def load_locales():
-    locales = {}
-    try:
-        for file in __import__("os").listdir(LOCALES_DIR):
-            if file.endswith(".json"):
-                lang = file.replace(".json", "")
-                with open(f"{LOCALES_DIR}/{file}", encoding="utf-8") as f:
-                    locales[lang] = json.load(f)
-    except Exception as e:
-        print(f"Locale error: {e}")
-    return locales
-
-LOCALES = load_locales()
-
-def t(context, key):
-    lang = context.user_data.get("lang", "uz")
-    return LOCALES.get(lang, LOCALES.get("uz", {})).get(key, key)
+logger = logging.getLogger(__name__)
 
 # ============== HELPERS ==============
-def format_price(price):
-    return f"{parse_price(price):,} so'm".replace(",", " ")
-
-def sanitize(text):
-    return text.strip()
-
-def esc(text):
-    return html.escape(str(text), quote=False)
-
-def parse_price(value):
-    cleaned = re.sub(r"[^\d.,]", "", str(value)).replace(",", ".")
-    try:
-        return int(float(cleaned))
-    except ValueError:
-        return 0
-
 async def safe_edit(query, text, **kwargs):
     """Edit the message; if it is a photo (no text), replace it with a new message."""
     try:
@@ -66,45 +32,11 @@ async def safe_edit(query, text, **kwargs):
             raise
         try:
             await query.delete_message()
-        except Exception:
-            pass
+        except TelegramError:
+            logger.warning("Could not delete photo message", exc_info=True)
         await query.message.chat.send_message(text, **kwargs)
 
-logger = logging.getLogger(__name__)
-
-def validate_phone(phone):
-    phone = phone.strip().replace(" ", "").replace("-", "")
-    patterns = [r'^\+998\d{9}$', r'^998\d{9}$', r'^9\d{8}$']
-    for pattern in patterns:
-        if re.match(pattern, phone):
-            if not phone.startswith("+"):
-                phone = "+" + phone if phone.startswith("998") else "+998" + phone
-            return phone
-    return None
-
-def fuzzy_search(query, products, threshold=65):
-    q = query.lower()
-    results = []
-    for p in products:
-        name = str(p.get("Nomi", "")).lower()
-        desc = str(p.get("Tavsif", "")).lower()
-        cat = str(p.get("Kategoriya", "")).lower()
-        score = max(
-            fuzz.partial_ratio(q, name),
-            fuzz.token_sort_ratio(q, name),
-            fuzz.partial_ratio(q, desc),
-            fuzz.token_sort_ratio(q, desc),
-            fuzz.partial_ratio(q, cat),
-            fuzz.token_sort_ratio(q, cat),
-        )
-        if score >= threshold:
-            results.append((score, p))
-    results.sort(key=lambda x: -x[0])
-    return [p for _, p in results]
-
 # ============== ADMIN ==============
-from config import ADMIN_CHAT_ID, ADMIN_IDS
-
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
@@ -128,8 +60,29 @@ async def notify_admin(context, order):
             text=text,
             reply_markup=order_status_keyboard(order["id"])
         )
-    except Exception as e:
-        logger.error("Admin notify error: %s", e)
+    except Exception:
+        logger.exception("Admin notify failed")
+
+async def send_broadcast(bot, user_ids, text, delay=BROADCAST_DELAY):
+    """Send text to every user; one failure never stops the rest. Returns (sent, failed)."""
+    sent = failed = 0
+    for uid in user_ids:
+        try:
+            try:
+                await bot.send_message(chat_id=uid, text=text)
+            except RetryAfter as e:
+                await asyncio.sleep(e.retry_after + 1)
+                await bot.send_message(chat_id=uid, text=text)
+            sent += 1
+        except Forbidden:
+            logger.info("Broadcast: user %s blocked the bot", uid)
+            failed += 1
+        except TelegramError:
+            logger.warning("Broadcast to %s failed", uid, exc_info=True)
+            failed += 1
+        await asyncio.sleep(delay)
+    logger.info("Broadcast finished: sent=%s failed=%s", sent, failed)
+    return sent, failed
 
 # ============== HANDLERS ==============
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -196,7 +149,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Product detail
     if query.data.startswith("product_"):
-        pid = int(query.data.split("_")[1])
+        pid = query.data.split("_", 1)[1]
         p = get_product_by_id(pid)
         if not p:
             await safe_edit(query, "❌ Mahsulot topilmadi", reply_markup=back_keyboard(context))
@@ -214,17 +167,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=product_action_keyboard(context, p['ID']),
                     parse_mode='HTML'
                 )
-                await query.delete_message()
+        except TelegramError:
+            logger.warning("Could not send photo for product %s, showing text instead", pid, exc_info=True)
+        else:
+            if rasm and str(rasm).strip():
+                try:
+                    await query.delete_message()
+                except TelegramError:
+                    logger.warning("Could not delete old message", exc_info=True)
                 return
-        except Exception:
-            pass
 
         await safe_edit(query, cap, reply_markup=product_action_keyboard(context, p['ID']), parse_mode='HTML')
         return
 
     # Buy product
     if query.data.startswith("buy_"):
-        pid = int(query.data.split("_")[1])
+        pid = query.data.split("_", 1)[1]
         p = get_product_by_id(pid)
         if not p:
             return
@@ -308,6 +266,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_edit(query, "Xabar matnini yozing:", reply_markup=back_keyboard(context))
         return
 
+    if query.data == "broadcast_cancel":
+        context.user_data['step'] = None
+        context.user_data.pop('broadcast_text', None)
+        await safe_edit(query, "❌ Broadcast bekor qilindi", reply_markup=back_keyboard(context))
+        return
+
+    if query.data == "broadcast_send":
+        if not is_admin(query.from_user.id):
+            await query.answer("❌ Access denied", show_alert=True)
+            return
+        text = context.user_data.pop('broadcast_text', None)
+        if not text:
+            await query.answer("Xabar topilmadi", show_alert=True)
+            return
+        user_ids = get_user_ids()
+        if user_ids is None:
+            await safe_edit(query, "❌ Users varag'ini o'qib bo'lmadi", reply_markup=back_keyboard(context))
+            return
+        await safe_edit(query, f"⏳ {len(user_ids)} ta foydalanuvchiga yuborilmoqda...")
+        sent, failed = await send_broadcast(context.bot, user_ids, text)
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=f"\U0001f4e2 Broadcast tugadi\n✅ Yuborildi: {sent}\n❌ Xato: {failed}",
+            reply_markup=back_keyboard(context),
+        )
+        return
+
     # Status update
     if query.data.startswith("status_"):
         if not is_admin(query.from_user.id):
@@ -364,8 +349,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if step == 'broadcast':
         if not is_admin(update.effective_user.id):
             return
-        await update.message.reply_text(f"Broadcast yuborildi!\n\n{text}")
+        context.user_data['broadcast_text'] = text
         context.user_data['step'] = None
+        await update.message.reply_text(
+            f"\U0001f4e2 Quyidagi xabar barcha foydalanuvchilarga yuboriladi:\n\n{text}",
+            reply_markup=broadcast_confirm_keyboard(),
+        )
         return
 
     # Order flow
